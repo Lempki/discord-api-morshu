@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     discord_api_secret: str
     tts_source_wav: str = "/data/morshu.wav"
+    tts_source_mp4: str = "/data/morshu.mp4"
     log_level: str = "INFO"
     tts_max_text_length: int = 500
 

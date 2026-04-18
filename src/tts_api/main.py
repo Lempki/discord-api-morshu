@@ -2,6 +2,9 @@ import asyncio
 import io
 import logging
 import logging.config
+import os
+import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -57,6 +60,98 @@ def _synthesize_blocking(text: str, speed: float, trim_silence: bool) -> bytes:
     return buf.getvalue()
 
 
+def _synthesize_video_blocking(text: str, source_mp4: str) -> bytes:
+    m = Morshu()
+    result = m.load_text(text)
+    if result is False or len(result) == 0:
+        return b""
+
+    audio = result
+    timings = m.audio_segment_timings
+    n = len(timings)
+    total_ms = len(audio)
+
+    # Build list of (source_start_sec, source_end_sec) for each phoneme segment.
+    # Silence segments (morshu == -1) are mapped to the source start so Morshu
+    # shows a closed-mouth idle frame during pauses.
+    segments: list[tuple[float, float]] = []
+    for i in range(n):
+        src_start = int(timings["morshu"][i])
+        out_end = int(timings["output"][i + 1]) if i + 1 < n else total_ms
+        duration_ms = out_end - int(timings["output"][i])
+        if duration_ms <= 0:
+            continue
+        if src_start < 0:
+            src_start = 0
+        segments.append((src_start / 1000.0, (src_start + duration_ms) / 1000.0))
+
+    if not segments:
+        return b""
+
+    wav_buf = io.BytesIO()
+    audio.export(wav_buf, format="wav")
+    wav_bytes = wav_buf.getvalue()
+
+    tmp_files: list[str] = []
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            concat_path = f.name
+            tmp_files.append(concat_path)
+            for start_s, end_s in segments:
+                f.write(f"file {source_mp4}\n")
+                f.write(f"inpoint {start_s:.6f}\n")
+                f.write(f"outpoint {end_s:.6f}\n")
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(wav_bytes)
+            wav_path = f.name
+            tmp_files.append(wav_path)
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            vid_path = f.name
+            tmp_files.append(vid_path)
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            out_path = f.name
+            tmp_files.append(out_path)
+
+        # Step 1: stitch video segments from source using the concat demuxer
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", concat_path,
+                "-c:v", "libx264", "-preset", "fast",
+                "-c:a", "aac",
+                vid_path,
+            ],
+            capture_output=True, check=True, timeout=120,
+        )
+
+        # Step 2: replace the stitched audio track with the generated WAV
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", vid_path, "-i", wav_path,
+                "-map", "0:v", "-map", "1:a",
+                "-c:v", "copy", "-c:a", "aac",
+                "-shortest",
+                out_path,
+            ],
+            capture_output=True, check=True, timeout=60,
+        )
+
+        with open(out_path, "rb") as f:
+            return f.read()
+
+    finally:
+        for p in tmp_files:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="discord-api-tts", version="1.0.0")
@@ -79,14 +174,30 @@ async def synthesize(
             detail=f"Text exceeds maximum length of {settings.tts_max_text_length} characters.",
         )
 
-    wav_bytes = await asyncio.to_thread(_synthesize_blocking, body.text, body.speed, body.trim_silence)
+    if body.format == "video":
+        if not os.path.isfile(settings.tts_source_mp4):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Video synthesis is not available: source MP4 not found. Configure TTS_SOURCE_MP4.",
+            )
+        mp4_bytes = await asyncio.to_thread(_synthesize_video_blocking, body.text, settings.tts_source_mp4)
+        if not mp4_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Could not generate video — no phoneme matches found for the given text.",
+            )
+        return StreamingResponse(
+            io.BytesIO(mp4_bytes),
+            media_type="video/mp4",
+            headers={"Content-Disposition": 'attachment; filename="morshu.mp4"'},
+        )
 
+    wav_bytes = await asyncio.to_thread(_synthesize_blocking, body.text, body.speed, body.trim_silence)
     if not wav_bytes:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Could not generate audio — no phoneme matches found for the given text.",
         )
-
     return StreamingResponse(
         io.BytesIO(wav_bytes),
         media_type="audio/wav",

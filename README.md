@@ -6,7 +6,7 @@ This is a REST API that synthesizes speech in Morshu's voice and returns the res
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/tts/synthesize` | Generate audio from text. Returns a WAV file. |
+| `POST` | `/tts/synthesize` | Generate audio or video from text. Returns a WAV or MP4 file depending on the `format` field. |
 | `GET` | `/tts/phonemes` | List the phoneme tokens available in the loaded source audio. |
 | `GET` | `/health` | Returns the service name and version. Used for uptime monitoring. |
 
@@ -18,13 +18,14 @@ All endpoints except `/health` require a bearer token in the `Authorization` hea
 {
   "text": "lamp oil, rope, bombs?",
   "speed": 1.0,
-  "trim_silence": false
+  "trim_silence": false,
+  "format": "wav"
 }
 ```
 
-`speed` accepts values between `0.5` and `2.0`. `trim_silence` removes leading and trailing silence from the output.
+`speed` accepts values between `0.5` and `2.0`. `trim_silence` removes leading and trailing silence from the output. `format` accepts `"wav"` (default) or `"video"`.
 
-Returns a binary WAV file with `Content-Type: audio/wav`. If the text exceeds the configured maximum length or no phoneme matches are found, a `422` response is returned with a descriptive error message.
+When `format` is `"wav"`, returns a binary WAV file with `Content-Type: audio/wav`. When `format` is `"video"`, stitches phoneme-level cuts from the source MP4 and returns an MP4 file with `Content-Type: video/mp4`. The `speed` and `trim_silence` fields are ignored for video output. If the text exceeds the configured maximum length or no phoneme matches are found, a `422` response is returned. If video is requested but the source MP4 is not available, a `503` response is returned.
 
 ## Prerequisites
 
@@ -85,6 +86,7 @@ All configuration is read from environment variables or from a `.env` file in th
 |---|---|---|---|
 | `DISCORD_API_SECRET` | Yes | — | Shared bearer token. All Discord bots must send this value in the `Authorization` header. |
 | `TTS_SOURCE_WAV` | No | `/data/morshu.wav` | Absolute path to the source WAV file inside the container. |
+| `TTS_SOURCE_MP4` | No | `/data/morshu.mp4` | Absolute path to the source MP4 file inside the container. Required only when video synthesis is used. |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity. Accepts standard Python logging levels. |
 | `TTS_MAX_TEXT_LENGTH` | No | `500` | Maximum number of characters accepted per synthesis request. |
 
