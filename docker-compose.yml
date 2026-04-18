@@ -1,0 +1,10 @@
+services:
+  tts:
+    build: .
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./assets:/data:ro
+    restart: unless-stopped
