@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="discord-api-morshutalk", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="discord-api-morshu", version="1.0.0", lifespan=lifespan)
 
 
 def _synthesize_blocking(text: str, speed: float, trim_silence: bool) -> bytes:
@@ -154,7 +154,7 @@ def _synthesize_video_blocking(text: str) -> bytes:
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="discord-api-morshutalk", version="1.0.0")
+    return HealthResponse(status="ok", service="discord-api-morshu", version="1.0.0")
 
 
 @app.get("/tts/phonemes", response_model=PhonemesResponse, dependencies=[Depends(require_auth)])
