@@ -61,7 +61,7 @@ Place `morshu.wav` in the `assets/` directory, then start the service:
 docker-compose up --build
 ```
 
-The API listens on port `8002` by default.
+After starting with docker-compose, the API is available at `http://localhost:8002`. The container itself listens on port `8000`; docker-compose maps `8002` on the host to `8000` inside the container.
 
 To run without Docker:
 
