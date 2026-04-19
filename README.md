@@ -25,33 +25,27 @@ All endpoints except `/health` require a bearer token in the `Authorization` hea
 
 `speed` accepts values between `0.5` and `2.0`. `trim_silence` removes leading and trailing silence from the output. `format` accepts `"wav"` (default) or `"video"`.
 
-When `format` is `"wav"`, returns a binary WAV file with `Content-Type: audio/wav`. When `format` is `"video"`, stitches phoneme-level cuts from the source MP4 and returns an MP4 file with `Content-Type: video/mp4`. The `speed` and `trim_silence` fields are ignored for video output. If the text exceeds the configured maximum length or no phoneme matches are found, a `422` response is returned. If video is requested but the source MP4 is not available, a `503` response is returned.
+When `format` is `"wav"`, returns a binary WAV file with `Content-Type: audio/wav`. When `format` is `"video"`, generates an MP4 by compositing MorshuTalk sprite frames at 10 fps in sync with the synthesised audio and returns the file with `Content-Type: video/mp4`. The `speed` and `trim_silence` fields are ignored for video output. If the text exceeds the configured maximum length or no phoneme matches are found, a `422` response is returned.
 
 ## Prerequisites
 
 * [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
-* The source audio and video files described in the [Assets](#assets) section below.
+* The source audio file described in the [Assets](#assets) section below.
 
 Running without Docker requires Python 3.12 or newer, and FFmpeg available in the system PATH.
 
 ## Assets
 
-The TTS engine requires two source files that are not committed to this repository. Place them in the `assets/` directory before starting the service.
+The TTS engine requires one source file that is not committed to this repository. Place it in the `assets/` directory before starting the service.
 
-| File | Description |
-|---|---|
-| `assets/morshu.wav` | The source audio file containing Morshu's CD-i dialogue. |
-| `assets/morshu.mp4` | The source video file with the same audio as `morshu.wav`. Used for video synthesis. Must be encoded with a short keyframe interval for frame-accurate cuts. See the note below. |
+| File | Required | Description |
+|---|---|---|
+| `assets/morshu.wav` | Yes | The source audio file containing Morshu's CD-i dialogue. |
+| `assets/morshu.mp4` | No | Reserved for future use. Not required for any current feature. |
 
 The `docker-compose.yml` mounts the `assets/` directory at `/data` inside the container. The default configuration expects `morshu.wav` at `/data/morshu.wav`.
 
-**Note on video format:** For frame-accurate phoneme-level cuts, the source video must have every frame as a keyframe. Transcode the original footage once using the following command:
-
-```bash
-ffmpeg -i original.mp4 -g 1 -c:v libx264 -preset ultrafast assets/morshu.mp4
-```
-
-This produces a larger file but allows FFmpeg to seek to any millisecond position exactly, which is required for stitching very short phoneme segments.
+The 154 sprite frames used for video synthesis are adapted from [MorshuTalk](https://github.com/n0spaces/MorshuTalk) and are bundled with the application in `src/tts_api/morshutalk/sprites/`. They do not need to be provided separately.
 
 ## Setup
 
@@ -61,7 +55,7 @@ Copy the environment template and fill in the required values:
 cp .env.example .env
 ```
 
-Place `morshu.wav` and `morshu.mp4` in the `assets/` directory, then start the service:
+Place `morshu.wav` in the `assets/` directory, then start the service:
 
 ```bash
 docker-compose up --build
@@ -86,7 +80,7 @@ All configuration is read from environment variables or from a `.env` file in th
 |---|---|---|---|
 | `DISCORD_API_SECRET` | Yes | — | Shared bearer token. All Discord bots must send this value in the `Authorization` header. |
 | `TTS_SOURCE_WAV` | No | `/data/morshu.wav` | Absolute path to the source WAV file inside the container. |
-| `TTS_SOURCE_MP4` | No | `/data/morshu.mp4` | Absolute path to the source MP4 file inside the container. Required only when video synthesis is used. |
+| `TTS_SOURCE_MP4` | No | — | Absolute path to an MP4 file inside the container. Reserved for future use. Not required for any current feature. |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity. Accepts standard Python logging levels. |
 | `TTS_MAX_TEXT_LENGTH` | No | `500` | Maximum number of characters accepted per synthesis request. |
 
@@ -94,9 +88,9 @@ All configuration is read from environment variables or from a `.env` file in th
 
 ```
 discord-api-morshutalk/
-├── assets/             # Source audio and video files. Not committed to the repository.
+├── assets/             # Source files. Not committed to the repository.
 │   ├── morshu.wav      # Source audio file. Required.
-│   └── morshu.mp4      # Source video file. Required for video synthesis.
+│   └── morshu.mp4      # Reserved for future use. Not required.
 ├── src/tts_api/
 │   ├── main.py         # FastAPI application and route definitions.
 │   ├── config.py       # Environment variable reader.
@@ -104,7 +98,8 @@ discord-api-morshutalk/
 │   ├── models.py       # Pydantic request and response models.
 │   └── morshutalk/     # TTS engine adapted from MorshuTalk by n0spaces.
 │       ├── morshu.py   # Core phoneme matching and audio stitching logic.
-│       └── g2p.py      # Grapheme-to-phoneme conversion wrapper.
+│       ├── g2p.py      # Grapheme-to-phoneme conversion wrapper.
+│       └── sprites/    # 154 sprite frames for video synthesis (0.png–153.png).
 ├── tests/
 ├── Dockerfile
 ├── docker-compose.yml

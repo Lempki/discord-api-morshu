@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -41,7 +42,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="discord-api-tts", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="discord-api-morshutalk", version="1.0.0", lifespan=lifespan)
 
 
 def _synthesize_blocking(text: str, speed: float, trim_silence: bool) -> bytes:
@@ -60,7 +61,11 @@ def _synthesize_blocking(text: str, speed: float, trim_silence: bool) -> bytes:
     return buf.getvalue()
 
 
-def _synthesize_video_blocking(text: str, source_mp4: str) -> bytes:
+_SPRITES_DIR = Path(__file__).parent / "morshutalk" / "sprites"
+_MAX_FRAME = 153
+
+
+def _synthesize_video_blocking(text: str) -> bytes:
     m = Morshu()
     result = m.load_text(text)
     if result is False or len(result) == 0:
@@ -68,24 +73,29 @@ def _synthesize_video_blocking(text: str, source_mp4: str) -> bytes:
 
     audio = result
     timings = m.audio_segment_timings
-    n = len(timings)
     total_ms = len(audio)
+    output_times = timings["output"].tolist()
+    morshu_times = timings["morshu"].tolist()
 
-    # Build list of (source_start_sec, source_end_sec) for each phoneme segment.
-    # Silence segments (morshu == -1) are mapped to the source start so Morshu
-    # shows a closed-mouth idle frame during pauses.
-    segments: list[tuple[float, float]] = []
-    for i in range(n):
-        src_start = int(timings["morshu"][i])
-        out_end = int(timings["output"][i + 1]) if i + 1 < n else total_ms
-        duration_ms = out_end - int(timings["output"][i])
-        if duration_ms <= 0:
-            continue
-        if src_start < 0:
-            src_start = 0
-        segments.append((src_start / 1000.0, (src_start + duration_ms) / 1000.0))
+    # Build one entry per 100 ms frame using the same formula as the MorshuTalk
+    # GUI: effective_morshu_t = morshu_start + (output_t - output_start),
+    # frame = effective_morshu_t // 100. Silence segments use frame 0.
+    frame_entries: list[tuple[int, int]] = []  # (frame_idx, duration_ms)
+    seg_idx = 0
+    t = 0
+    while t < total_ms:
+        while seg_idx + 1 < len(output_times) and output_times[seg_idx + 1] <= t:
+            seg_idx += 1
+        morshu_start = int(morshu_times[seg_idx])
+        output_start = int(output_times[seg_idx])
+        if morshu_start < 0:
+            frame_idx = 0
+        else:
+            frame_idx = min((morshu_start + (t - output_start)) // 100, _MAX_FRAME)
+        frame_entries.append((frame_idx, min(100, total_ms - t)))
+        t += 100
 
-    if not segments:
+    if not frame_entries:
         return b""
 
     wav_buf = io.BytesIO()
@@ -94,51 +104,41 @@ def _synthesize_video_blocking(text: str, source_mp4: str) -> bytes:
 
     tmp_files: list[str] = []
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
-            concat_path = f.name
-            tmp_files.append(concat_path)
-            for start_s, end_s in segments:
-                f.write(f"file {source_mp4}\n")
-                f.write(f"inpoint {start_s:.6f}\n")
-                f.write(f"outpoint {end_s:.6f}\n")
-
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(wav_bytes)
             wav_path = f.name
             tmp_files.append(wav_path)
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            vid_path = f.name
-            tmp_files.append(vid_path)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            concat_path = f.name
+            tmp_files.append(concat_path)
+            f.write("ffconcat version 1.0\n")
+            for frame_idx, duration_ms in frame_entries:
+                sprite = (_SPRITES_DIR / f"{frame_idx}.png").as_posix()
+                f.write(f"file '{sprite}'\n")
+                f.write(f"duration {duration_ms / 1000:.3f}\n")
+            # Repeat the last file entry without a duration to prevent ffconcat
+            # from dropping the final frame.
+            last_sprite = (_SPRITES_DIR / f"{frame_entries[-1][0]}.png").as_posix()
+            f.write(f"file '{last_sprite}'\n")
 
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             out_path = f.name
             tmp_files.append(out_path)
 
-        # Step 1: stitch video segments from source using the concat demuxer
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
                 "-i", concat_path,
+                "-i", wav_path,
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p",
                 "-c:v", "libx264", "-preset", "fast",
                 "-c:a", "aac",
-                vid_path,
-            ],
-            capture_output=True, check=True, timeout=120,
-        )
-
-        # Step 2: replace the stitched audio track with the generated WAV
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", vid_path, "-i", wav_path,
-                "-map", "0:v", "-map", "1:a",
-                "-c:v", "copy", "-c:a", "aac",
                 "-shortest",
                 out_path,
             ],
-            capture_output=True, check=True, timeout=60,
+            capture_output=True, check=True, timeout=120,
         )
 
         with open(out_path, "rb") as f:
@@ -154,7 +154,7 @@ def _synthesize_video_blocking(text: str, source_mp4: str) -> bytes:
 
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", service="discord-api-tts", version="1.0.0")
+    return HealthResponse(status="ok", service="discord-api-morshutalk", version="1.0.0")
 
 
 @app.get("/tts/phonemes", response_model=PhonemesResponse, dependencies=[Depends(require_auth)])
@@ -175,12 +175,7 @@ async def synthesize(
         )
 
     if body.format == "video":
-        if not os.path.isfile(settings.tts_source_mp4):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Video synthesis is not available: source MP4 not found. Configure TTS_SOURCE_MP4.",
-            )
-        mp4_bytes = await asyncio.to_thread(_synthesize_video_blocking, body.text, settings.tts_source_mp4)
+        mp4_bytes = await asyncio.to_thread(_synthesize_video_blocking, body.text)
         if not mp4_bytes:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
