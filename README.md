@@ -36,11 +36,11 @@ Running without Docker requires Python 3.12 or newer, and FFmpeg available in th
 
 ## Assets
 
-The TTS engine requires one source file that is not committed to this repository. Place it in the `assets/` directory before starting the service.
+The TTS engine requires one source file. `morshu.wav` is committed to this repository in the `assets/` directory.
 
 | File | Required | Description |
 |---|---|---|
-| `assets/morshu.wav` | Yes | The source audio file containing Morshu's CD-i dialogue. |
+| `assets/morshu.wav` | Yes | The source audio file containing Morshu's CD-i dialogue. Committed to the repository. |
 | `assets/morshu.mp4` | No | Reserved for future use. Not required for any current feature. |
 
 The `docker-compose.yml` mounts the `assets/` directory at `/data` inside the container. The default configuration expects `morshu.wav` at `/data/morshu.wav`.
@@ -55,7 +55,7 @@ Copy the environment template and fill in the required values:
 cp .env.example .env
 ```
 
-Place `morshu.wav` in the `assets/` directory, then start the service:
+Start the service:
 
 ```bash
 docker-compose up --build
@@ -88,7 +88,7 @@ All configuration is read from environment variables or from a `.env` file in th
 
 ```
 discord-api-morshu/
-├── assets/             # Source files. Not committed to the repository.
+├── assets/             # Source files. morshu.wav is committed; generated output is not.
 │   ├── morshu.wav      # Source audio file. Required.
 │   └── morshu.mp4      # Reserved for future use. Not required.
 ├── src/tts_api/
