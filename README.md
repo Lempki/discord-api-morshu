@@ -1,4 +1,4 @@
-# discord-api-tts
+# discord-api-morshutalk
 
 This is a REST API that synthesizes speech in Morshu's voice and returns the result as an audio or video file. It hosts the TTS engine adapted from [MorshuTalk](https://github.com/n0spaces/MorshuTalk) by [n0spaces](https://github.com/n0spaces), converting arbitrary text into audio by stitching phoneme segments from Morshu's original Zelda CD-i dialogue. Discord bots call this API to generate and play Morshu audio without bundling the TTS engine or its dependencies locally. This project is based on the [discord-api-template](https://github.com/Lempki/discord-api-template) repository, which provides the core architecture.
 
@@ -93,7 +93,7 @@ All configuration is read from environment variables or from a `.env` file in th
 ## Project structure
 
 ```
-discord-api-tts/
+discord-api-morshutalk/
 ├── assets/             # Source audio and video files. Not committed to the repository.
 │   ├── morshu.wav      # Source audio file. Required.
 │   └── morshu.mp4      # Source video file. Required for video synthesis.
