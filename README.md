@@ -40,12 +40,12 @@ The TTS engine requires two source files that are not committed to this reposito
 
 | File | Description |
 |---|---|
-| `assets/morshu.wav` | The source audio file containing Morshu's CD-i dialogue. This is the same file previously located in `morshutalk/` in the bot repository. |
+| `assets/morshu.wav` | The source audio file containing Morshu's CD-i dialogue. |
 | `assets/morshu.mp4` | The source video file with the same audio as `morshu.wav`. Used for video synthesis. Must be encoded with a short keyframe interval for frame-accurate cuts. See the note below. |
 
 The `docker-compose.yml` mounts the `assets/` directory at `/data` inside the container. The default configuration expects `morshu.wav` at `/data/morshu.wav`.
 
-**Note on video format.** For frame-accurate phoneme-level cuts, the source video must have every frame as a keyframe. Transcode the original footage once using the following command:
+**Note on video format:** For frame-accurate phoneme-level cuts, the source video must have every frame as a keyframe. Transcode the original footage once using the following command:
 
 ```bash
 ffmpeg -i original.mp4 -g 1 -c:v libx264 -preset ultrafast assets/morshu.mp4
