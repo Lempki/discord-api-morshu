@@ -1,15 +1,12 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
-from tts_api.main import app
-from tts_api.config import get_settings, Settings
+os.environ.setdefault("DISCORD_API_SECRET", "test-secret")
+os.environ.setdefault("TTS_SOURCE_WAV", "assets/morshu.wav")
 
-
-def _override_settings():
-    return Settings(discord_api_secret="test-secret", tts_source_wav="assets/morshu.wav")
-
-
-app.dependency_overrides[get_settings] = _override_settings
+from tts_api.main import app  # noqa: E402
 
 client = TestClient(app)
 AUTH = {"Authorization": "Bearer test-secret"}
