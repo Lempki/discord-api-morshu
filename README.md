@@ -41,7 +41,6 @@ The TTS engine requires one source file. `morshu.wav` is committed to this repos
 | File | Required | Description |
 |---|---|---|
 | `assets/morshu.wav` | Yes | The source audio file containing Morshu's CD-i dialogue. Committed to the repository. |
-| `assets/morshu.mp4` | No | Reserved for future use. Not required for any current feature. |
 
 The `docker-compose.yml` mounts the `assets/` directory at `/data` inside the container. The default configuration expects `morshu.wav` at `/data/morshu.wav`.
 
@@ -80,7 +79,6 @@ All configuration is read from environment variables or from a `.env` file in th
 |---|---|---|---|
 | `DISCORD_API_SECRET` | Yes | — | Shared bearer token. All Discord bots must send this value in the `Authorization` header. |
 | `TTS_SOURCE_WAV` | No | `/data/morshu.wav` | Absolute path to the source WAV file inside the container. |
-| `TTS_SOURCE_MP4` | No | — | Absolute path to an MP4 file inside the container. Reserved for future use. Not required for any current feature. |
 | `LOG_LEVEL` | No | `INFO` | Log verbosity. Accepts standard Python logging levels. |
 | `TTS_MAX_TEXT_LENGTH` | No | `500` | Maximum number of characters accepted per synthesis request. |
 
@@ -89,8 +87,7 @@ All configuration is read from environment variables or from a `.env` file in th
 ```
 discord-api-morshu/
 ├── assets/             # Source files. morshu.wav is committed; generated output is not.
-│   ├── morshu.wav      # Source audio file. Required.
-│   └── morshu.mp4      # Reserved for future use. Not required.
+│   └── morshu.wav      # Source audio file. Required.
 ├── src/tts_api/
 │   ├── main.py         # FastAPI application and route definitions.
 │   ├── config.py       # Environment variable reader.
@@ -105,6 +102,13 @@ discord-api-morshu/
 ├── docker-compose.yml
 ├── pyproject.toml
 └── .env.example
+```
+
+## Running tests
+
+```bash
+pip install -e ".[dev]"
+pytest
 ```
 
 ## Credits
